@@ -1,0 +1,48 @@
+{ "compressionlevel":-1,
+ "editorsettings":
+    {
+     "export":
+        {
+         "format":"json"
+        }
+    },
+ "height":10,
+ "infinite":false,
+ "layers":[
+        {
+         "data":[2, 2, 4, 4, 2, 4, 4, 4, 4, 4,
+            2, 2, 4, 4, 4, 4, 4, 3, 3, 4,
+            2, 2, 4, 4, 4, 4, 3, 3, 3, 3,
+            2, 2, 4, 4, 4, 3, 3, 3, 3, 3,
+            2, 2, 4, 4, 4, 4, 4, 4, 3, 3,
+            2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+            2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+            2, 2, 4, 4, 1, 1, 1, 1, 4, 4,
+            2, 2, 4, 4, 4, 1, 1, 4, 4, 4,
+            2, 2, 4, 4, 4, 4, 1, 4, 4, 4],
+         "height":10,
+         "id":1,
+         "name":"Ground_Elevation_0",
+         "opacity":1,
+         "type":"tilelayer",
+         "visible":true,
+         "width":10,
+         "x":0,
+         "y":0
+        }],
+ "nextlayerid":2,
+ "nextobjectid":1,
+ "orientation":"isometric",
+ "renderorder":"right-down",
+ "tiledversion":"1.12.2",
+ "tileheight":32,
+ "tilesets":[
+        {
+         "firstgid":1,
+         "source":"..\/..\/..\/..\/..\/..\/Downloads\/StarterTerrain.tsx"
+        }],
+ "tilewidth":64,
+ "type":"map",
+ "version":"1.10",
+ "width":10
+}
