@@ -65,7 +65,7 @@ public sealed class MovementRangeCalculator
                     1;
 
                 if (newCost >
-                    unit.MovementRange)
+                    unit.EffectiveMovementRange)
                 {
                     continue;
                 }

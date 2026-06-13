@@ -1,4 +1,6 @@
-﻿using System;
+#nullable enable
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -6,8 +8,6 @@ namespace TacticsGame.Battle;
 
 /// <summary>
 /// Coordinates player and enemy phases.
-/// Enemy AI is not implemented yet, so Game1 temporarily skips the
-/// enemy phase after each completed player phase.
 /// </summary>
 public sealed class BattleTurnController
 {
@@ -15,29 +15,42 @@ public sealed class BattleTurnController
 
     public BattleTeam ActiveTeam { get; private set; } = BattleTeam.Player;
 
-    public void BeginBattle(IEnumerable<BattleUnit> units)
+    public BattleUnit? ActiveUnit { get; private set; }
+
+    public void BeginBattle(
+        IEnumerable<BattleUnit> units)
     {
-        ArgumentNullException.ThrowIfNull(units);
+        ArgumentNullException.ThrowIfNull(
+            units);
 
         RoundNumber = 1;
-        StartTeamTurn(BattleTeam.Player, units);
+
+        StartTeamTurn(
+            BattleTeam.Player,
+            units);
     }
 
-    public bool CanSelectUnit(BattleUnit unit)
+    public bool CanSelectUnit(
+        BattleUnit unit)
     {
-        ArgumentNullException.ThrowIfNull(unit);
+        ArgumentNullException.ThrowIfNull(
+            unit);
 
         return unit.Team == ActiveTeam &&
                !unit.IsDefeated &&
-               !unit.TurnState.HasEndedTurn;
+               !unit.TurnState.HasEndedTurn &&
+               unit == ActiveUnit;
     }
 
     public void EndUnitTurn(
         BattleUnit unit,
         IEnumerable<BattleUnit> units)
     {
-        ArgumentNullException.ThrowIfNull(unit);
-        ArgumentNullException.ThrowIfNull(units);
+        ArgumentNullException.ThrowIfNull(
+            unit);
+
+        ArgumentNullException.ThrowIfNull(
+            units);
 
         if (!CanSelectUnit(unit))
         {
@@ -46,21 +59,27 @@ public sealed class BattleTurnController
 
         unit.TurnState.MarkEndedTurn();
 
-        if (!AreAllUnitsFinished(ActiveTeam, units))
+        if (!AreAllUnitsFinished(
+                ActiveTeam,
+                units))
         {
+            ActiveUnit =
+                GetNextReadyUnit(
+                    ActiveTeam,
+                    units);
+
             return;
         }
 
-        AdvanceTeam(units);
+        AdvanceTeam(
+            units);
     }
 
-    /// <summary>
-    /// Temporary helper used until enemy AI exists.
-    /// </summary>
     public void SkipActiveTeamTurn(
         IEnumerable<BattleUnit> units)
     {
-        ArgumentNullException.ThrowIfNull(units);
+        ArgumentNullException.ThrowIfNull(
+            units);
 
         foreach (var unit in units.Where(unit =>
                      unit.Team == ActiveTeam &&
@@ -69,7 +88,8 @@ public sealed class BattleTurnController
             unit.TurnState.MarkEndedTurn();
         }
 
-        AdvanceTeam(units);
+        AdvanceTeam(
+            units);
     }
 
     private void AdvanceTeam(
@@ -77,13 +97,18 @@ public sealed class BattleTurnController
     {
         if (ActiveTeam == BattleTeam.Player)
         {
-            StartTeamTurn(BattleTeam.Enemy, units);
+            StartTeamTurn(
+                BattleTeam.Enemy,
+                units);
+
             return;
         }
 
         RoundNumber++;
 
-        StartTeamTurn(BattleTeam.Player, units);
+        StartTeamTurn(
+            BattleTeam.Player,
+            units);
     }
 
     private void StartTeamTurn(
@@ -98,6 +123,21 @@ public sealed class BattleTurnController
         {
             unit.TurnState.Reset();
         }
+
+        ActiveUnit =
+            GetNextReadyUnit(
+                team,
+                units);
+    }
+
+    private static BattleUnit? GetNextReadyUnit(
+        BattleTeam team,
+        IEnumerable<BattleUnit> units)
+    {
+        return units.FirstOrDefault(unit =>
+            unit.Team == team &&
+            !unit.IsDefeated &&
+            !unit.TurnState.HasEndedTurn);
     }
 
     private static bool AreAllUnitsFinished(

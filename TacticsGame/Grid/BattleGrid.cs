@@ -279,43 +279,38 @@ public sealed class BattleGrid
     }
 
     public void MoveUnit(
-        BattleUnit unit,
-        Point destination)
+    BattleUnit unit,
+    Point destination)
     {
-        ArgumentNullException.ThrowIfNull(
-            unit);
+        ArgumentNullException.ThrowIfNull(unit);
 
         var currentTile =
-            GetTile(
-                unit.Position);
+            GetTile(unit.Position);
 
         var destinationTile =
-            GetTile(
-                destination);
+            GetTile(destination);
 
-        if (!CanEnterTile(
-                destinationTile,
-                unit))
+        if (!CanEnterTile(destinationTile, unit))
         {
             throw new InvalidOperationException(
                 $"Unit '{unit.Name}' cannot move to " +
                 $"({destination.X}, {destination.Y}).");
         }
 
-        if (currentTile.OccupyingUnit ==
-            unit)
+        if (currentTile.OccupyingUnit == unit)
         {
-            currentTile.OccupyingUnit =
-                null;
+            currentTile.OccupyingUnit = null;
         }
 
-        unit.Position =
-            destination;
+        unit.Position = destination;
 
-        destinationTile.OccupyingUnit =
-            unit;
+        unit.RenderGridPosition =
+            new Vector2(
+                destination.X,
+                destination.Y);
+
+        destinationTile.OccupyingUnit = unit;
     }
-
     public void RemoveUnit(
     BattleUnit unit)
     {

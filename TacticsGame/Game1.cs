@@ -4,9 +4,11 @@ using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using TacticsGame.Battle;
 using TacticsGame.Grid;
 using TacticsGame.Input;
+using TacticsGame.Items;
 using TacticsGame.Maps;
 using TacticsGame.Rendering;
 using TacticsGame.UI;
@@ -15,6 +17,15 @@ namespace TacticsGame;
 
 public sealed class Game1 : Game
 {
+    private const int PartySize = 3;
+
+    private static readonly Point[] PlayerStartPositions =
+    {
+        new(2, 2),
+        new(3, 2),
+        new(2, 3)
+    };
+
     private readonly GraphicsDeviceManager _graphics;
     private readonly InputManager _inputManager;
     private readonly Camera2D _camera;
@@ -24,6 +35,7 @@ public sealed class Game1 : Game
     private readonly BattleTurnController _battleTurnController = new();
 
     private readonly List<BattleUnit> _units = new();
+    private readonly List<EquipmentItem> _availableGear = new();
     private readonly HashSet<Point> _reachableMovementTiles = new();
     private readonly HashSet<Point> _attackableTiles = new();
 
@@ -39,6 +51,14 @@ public sealed class Game1 : Game
     private AttackRangeRenderer? _attackRangeRenderer;
     private BattleUnitRenderer? _battleUnitRenderer;
     private BattleActionMenu? _battleActionMenu;
+    private PartyManagementScreen? _partyManagementScreen;
+    private MainMenuScreen? _mainMenuScreen;
+    private TextMenuScreen? _instructionsScreen;
+    private TextMenuScreen? _optionsScreen;
+    private TeamSelectionScreen? _teamSelectionScreen;
+
+    private GameScreen _currentScreen = GameScreen.MainMenu;
+    private readonly EnemyAiController _enemyAiController = new();
 
     private BattleHud? _battleHud;
     private BattleUnit? _hoveredUnit;
@@ -54,6 +74,7 @@ public sealed class Game1 : Game
     private Point? _selectedTile;
 
     private string? _lastCombatMessage;
+    private bool _isEnemyTurnRunning;
 
     private BattleInteractionMode _interactionMode =
         BattleInteractionMode.Idle;
@@ -78,6 +99,7 @@ public sealed class Game1 : Game
         Window.Title = "Tactics Game";
         Window.AllowUserResizing = true;
         Window.ClientSizeChanged += OnClientSizeChanged;
+        Window.TextInput += OnTextInput;
 
         base.Initialize();
     }
@@ -86,7 +108,9 @@ public sealed class Game1 : Game
     {
         _spriteBatch = new SpriteBatch(GraphicsDevice);
         _uiFont = Content.Load<SpriteFont>("Fonts/Default");
-        _battleHud = new BattleHud(    GraphicsDevice);
+        _battleHud = new BattleHud(
+            GraphicsDevice);
+
         var mapFilePath = Path.Combine(
             AppContext.BaseDirectory,
             "Assets",
@@ -128,8 +152,26 @@ public sealed class Game1 : Game
         _battleActionMenu = new BattleActionMenu(
             GraphicsDevice);
 
-        _battleGrid = BattleGrid.FromLoadedMap(
-            _loadedMap);
+        _partyManagementScreen = new PartyManagementScreen(
+            GraphicsDevice);
+
+        _mainMenuScreen = new MainMenuScreen(
+            GraphicsDevice);
+
+        _instructionsScreen = new TextMenuScreen(
+            GraphicsDevice,
+            "Instructions",
+            CreateInstructionLines());
+
+        _optionsScreen = new TextMenuScreen(
+            GraphicsDevice,
+            "Options",
+            CreateOptionLines());
+
+        _teamSelectionScreen = new TeamSelectionScreen(
+            GraphicsDevice,
+            CreateJobDefinitions(),
+            PartySize);
 
         _movementRangeCalculator =
             new MovementRangeCalculator();
@@ -137,40 +179,9 @@ public sealed class Game1 : Game
         _attackRangeCalculator =
             new AttackRangeCalculator();
 
-        var swordsman = new BattleUnit
-        {
-            Name = "Swordsman",
-            Team = BattleTeam.Player,
-            Position = new Point(2, 2),
-            RenderGridPosition = new Vector2(2.0f, 2.0f),
-            MaximumHealth = 20,
-            CurrentHealth = 20,
-            AttackDamage = 4,
-            AttackRange = 1,
-            MovementRange = 4,
-            JumpHeight = 1
-        };
-
-        var rat = new BattleUnit
-        {
-            Name = "Rat",
-            Team = BattleTeam.Enemy,
-            Position = new Point(6, 5),
-            RenderGridPosition = new Vector2(6.0f, 5.0f),
-            MaximumHealth = 8,
-            CurrentHealth = 8,
-            AttackDamage = 2,
-            AttackRange = 1,
-            MovementRange = 5,
-            JumpHeight = 1
-        };
-
-        _units.Add(swordsman);
-        _units.Add(rat);
-
-        _battleGrid.PlaceUnit(swordsman);
-        _battleGrid.PlaceUnit(rat);
-        _battleTurnController.BeginBattle(_units);
+        _availableGear.Clear();
+        _availableGear.AddRange(
+            CreateStarterGear());
 
         UpdateWindowTitle();
     }
@@ -180,14 +191,46 @@ public sealed class Game1 : Game
     {
         _inputManager.Update();
 
-        var keyboardState = Keyboard.GetState();
+        if (_currentScreen != GameScreen.Battle &&
+            _currentScreen != GameScreen.PartyManagement)
+        {
+            UpdateMenuScreens();
 
-        if (keyboardState.IsKeyDown(Keys.Escape))
+            base.Update(gameTime);
+            return;
+        }
+
+        if (_inputManager.IsKeyPressed(Keys.P))
+        {
+            if (_currentScreen == GameScreen.PartyManagement)
+            {
+                ClosePartyManagementScreen();
+            }
+            else
+            {
+                OpenPartyManagementScreen();
+            }
+        }
+
+        if (_currentScreen == GameScreen.PartyManagement)
+        {
+            if (_inputManager.IsKeyPressed(Keys.Escape))
+            {
+                ClosePartyManagementScreen();
+            }
+
+            UpdatePartyManagementScreen();
+
+            base.Update(gameTime);
+            return;
+        }
+
+        if (_inputManager.IsKeyPressed(Keys.Escape))
         {
             Exit();
         }
 
-        if (keyboardState.IsKeyDown(Keys.Home))
+        if (_inputManager.IsKeyPressed(Keys.Home))
         {
             ResetCamera();
         }
@@ -200,8 +243,20 @@ public sealed class Game1 : Game
         _battleActionMenu?.Update(
             _inputManager.MousePosition);
 
+        var wasEnemyTurnActive =
+            _isEnemyTurnRunning ||
+            _battleTurnController.ActiveTeam == BattleTeam.Enemy;
+
         UpdateUnitMovement(
             gameTime);
+
+        if (wasEnemyTurnActive ||
+            _isEnemyTurnRunning ||
+            _battleTurnController.ActiveTeam == BattleTeam.Enemy)
+        {
+            base.Update(gameTime);
+            return;
+        }
 
         if (_interactionMode !=
             BattleInteractionMode.AnimatingMovement)
@@ -226,6 +281,15 @@ public sealed class Game1 : Game
             return;
         }
 
+        if (_currentScreen != GameScreen.Battle &&
+            _currentScreen != GameScreen.PartyManagement)
+        {
+            DrawMenuScreens();
+
+            base.Draw(gameTime);
+            return;
+        }
+
         DrawWorld();
         DrawUi();
         
@@ -235,8 +299,15 @@ public sealed class Game1 : Game
     {
         Window.ClientSizeChanged -=
             OnClientSizeChanged;
+        Window.TextInput -=
+            OnTextInput;
 
         _battleActionMenu?.Dispose();
+        _partyManagementScreen?.Dispose();
+        _mainMenuScreen?.Dispose();
+        _instructionsScreen?.Dispose();
+        _optionsScreen?.Dispose();
+        _teamSelectionScreen?.Dispose();
         _battleUnitRenderer?.Dispose();
         _attackRangeRenderer?.Dispose();
         _movementRangeRenderer?.Dispose();
@@ -316,6 +387,17 @@ public sealed class Game1 : Game
         _spriteBatch.Begin(
             samplerState: SamplerState.PointClamp);
 
+        if (_currentScreen == GameScreen.PartyManagement)
+        {
+            _partyManagementScreen?.Draw(
+                _spriteBatch,
+                _uiFont,
+                GraphicsDevice.Viewport);
+
+            _spriteBatch.End();
+            return;
+        }
+
         _battleActionMenu.Draw(
             _spriteBatch,
             _uiFont);
@@ -330,6 +412,518 @@ public sealed class Game1 : Game
         _spriteBatch.End();
     }
 
+    private void UpdateMenuScreens()
+    {
+        switch (_currentScreen)
+        {
+            case GameScreen.MainMenu:
+                UpdateMainMenuScreen();
+                break;
+
+            case GameScreen.Instructions:
+                UpdateTextMenuScreen(
+                    _instructionsScreen);
+                break;
+
+            case GameScreen.Options:
+                UpdateTextMenuScreen(
+                    _optionsScreen);
+                break;
+
+            case GameScreen.TeamSelection:
+                UpdateTeamSelectionScreen();
+                break;
+        }
+    }
+
+    private void UpdateMainMenuScreen()
+    {
+        if (_mainMenuScreen is null)
+        {
+            return;
+        }
+
+        if (_inputManager.IsKeyPressed(
+                Keys.Escape))
+        {
+            Exit();
+            return;
+        }
+
+        var action =
+            _mainMenuScreen.Update(
+                _inputManager.MousePosition,
+                _inputManager.IsLeftMouseButtonPressed,
+                GraphicsDevice.Viewport);
+
+        switch (action)
+        {
+            case MainMenuAction.Start:
+                _currentScreen =
+                    GameScreen.TeamSelection;
+                break;
+
+            case MainMenuAction.Instructions:
+                _currentScreen =
+                    GameScreen.Instructions;
+                break;
+
+            case MainMenuAction.Options:
+                _currentScreen =
+                    GameScreen.Options;
+                break;
+
+            case MainMenuAction.Quit:
+                Exit();
+                break;
+        }
+
+        UpdateWindowTitle();
+    }
+
+    private void UpdateTextMenuScreen(
+        TextMenuScreen? screen)
+    {
+        if (screen is null)
+        {
+            return;
+        }
+
+        var shouldReturn =
+            _inputManager.IsKeyPressed(
+                Keys.Escape) ||
+            screen.Update(
+                _inputManager.MousePosition,
+                _inputManager.IsLeftMouseButtonPressed,
+                GraphicsDevice.Viewport);
+
+        if (!shouldReturn)
+        {
+            return;
+        }
+
+        _currentScreen =
+            GameScreen.MainMenu;
+
+        UpdateWindowTitle();
+    }
+
+    private void UpdateTeamSelectionScreen()
+    {
+        if (_teamSelectionScreen is null)
+        {
+            return;
+        }
+
+        if (_inputManager.IsKeyPressed(
+                Keys.Escape))
+        {
+            _currentScreen =
+                GameScreen.MainMenu;
+
+            UpdateWindowTitle();
+            return;
+        }
+
+        var action =
+            _teamSelectionScreen.Update(
+                _inputManager.MousePosition,
+                _inputManager.IsLeftMouseButtonPressed,
+                _inputManager.IsKeyPressed(Keys.Back),
+                GraphicsDevice.Viewport);
+
+        switch (action)
+        {
+            case TeamSelectionAction.Start:
+                StartBattle(
+                    _teamSelectionScreen.GetSelections());
+                break;
+
+            case TeamSelectionAction.Back:
+                _currentScreen =
+                    GameScreen.MainMenu;
+                break;
+        }
+
+        UpdateWindowTitle();
+    }
+
+    private void DrawMenuScreens()
+    {
+        if (_spriteBatch is null ||
+            _uiFont is null)
+        {
+            return;
+        }
+
+        _spriteBatch.Begin(
+            samplerState: SamplerState.PointClamp);
+
+        switch (_currentScreen)
+        {
+            case GameScreen.MainMenu:
+                _mainMenuScreen?.Draw(
+                    _spriteBatch,
+                    _uiFont,
+                    GraphicsDevice.Viewport);
+                break;
+
+            case GameScreen.Instructions:
+                _instructionsScreen?.Draw(
+                    _spriteBatch,
+                    _uiFont,
+                    GraphicsDevice.Viewport);
+                break;
+
+            case GameScreen.Options:
+                _optionsScreen?.Draw(
+                    _spriteBatch,
+                    _uiFont,
+                    GraphicsDevice.Viewport);
+                break;
+
+            case GameScreen.TeamSelection:
+                _teamSelectionScreen?.Draw(
+                    _spriteBatch,
+                    _uiFont,
+                    GraphicsDevice.Viewport);
+                break;
+        }
+
+        _spriteBatch.End();
+    }
+
+    private void StartBattle(
+        IReadOnlyList<TeamMemberSelection> teamSelections)
+    {
+        if (_loadedMap is null)
+        {
+            return;
+        }
+
+        _units.Clear();
+        ClearActionOverlays();
+
+        _selectedUnit = null;
+        _hoveredUnit = null;
+        _hoveredTile = null;
+        _selectedTile = null;
+        _lastCombatMessage = null;
+        _lastSelectedAction = null;
+        _isEnemyTurnRunning = false;
+        _interactionMode =
+            BattleInteractionMode.Idle;
+
+        _battleActionMenu?.Hide();
+
+        _battleGrid =
+            BattleGrid.FromLoadedMap(
+                _loadedMap);
+
+        for (var index = 0;
+             index < teamSelections.Count &&
+             index < PlayerStartPositions.Length;
+             index++)
+        {
+            var unit =
+                CreatePlayerUnit(
+                    teamSelections[index],
+                    PlayerStartPositions[index]);
+
+            _units.Add(
+                unit);
+
+            _battleGrid.PlaceUnit(
+                unit);
+        }
+
+        foreach (var enemy in CreateEnemyUnits())
+        {
+            _units.Add(
+                enemy);
+
+            _battleGrid.PlaceUnit(
+                enemy);
+        }
+
+        _currentScreen =
+            GameScreen.Battle;
+
+        _battleTurnController.BeginBattle(
+            _units);
+
+        SelectActivePlayerUnit();
+        ResetCamera();
+        UpdateWindowTitle();
+    }
+
+    private static BattleUnit CreatePlayerUnit(
+        TeamMemberSelection selection,
+        Point position)
+    {
+        var job =
+            selection.Job;
+
+        return new BattleUnit
+        {
+            Name = selection.Name,
+            Team = BattleTeam.Player,
+            Position = position,
+            RenderGridPosition =
+                new Vector2(
+                    position.X,
+                    position.Y),
+            MaximumHealth = job.MaximumHealth,
+            CurrentHealth = job.MaximumHealth,
+            AttackDamage = job.AttackDamage,
+            AttackRange = job.AttackRange,
+            MovementRange = job.MovementRange,
+            JumpHeight = job.JumpHeight
+        };
+    }
+
+    private static IReadOnlyList<BattleUnit> CreateEnemyUnits()
+    {
+        return new List<BattleUnit>
+        {
+            new()
+            {
+                Name = "Rat",
+                Team = BattleTeam.Enemy,
+                Position = new Point(6, 5),
+                RenderGridPosition = new Vector2(6.0f, 5.0f),
+                MaximumHealth = 8,
+                CurrentHealth = 8,
+                AttackDamage = 2,
+                AttackRange = 1,
+                MovementRange = 5,
+                JumpHeight = 1
+            }
+        };
+    }
+
+    private void UpdatePartyManagementScreen()
+    {
+        if (_partyManagementScreen is null)
+        {
+            return;
+        }
+
+        _partyManagementScreen.Update(
+            _inputManager.MousePosition,
+            _inputManager.IsLeftMouseButtonPressed,
+            GraphicsDevice.Viewport);
+
+        if (_partyManagementScreen.WantsClose)
+        {
+            ClosePartyManagementScreen();
+        }
+    }
+
+    private void OpenPartyManagementScreen()
+    {
+        if (_interactionMode ==
+                BattleInteractionMode.AnimatingMovement ||
+            _battleTurnController.ActiveTeam !=
+                BattleTeam.Player)
+        {
+            return;
+        }
+
+        ClearSelectedUnit();
+        _selectedTile = null;
+        _hoveredTile = null;
+        _hoveredUnit = null;
+
+        _partyManagementScreen?.Show(
+            GetPlayerUnits(),
+            _availableGear);
+
+        _currentScreen =
+            GameScreen.PartyManagement;
+
+        UpdateWindowTitle();
+    }
+
+    private void ClosePartyManagementScreen()
+    {
+        _currentScreen =
+            GameScreen.Battle;
+
+        SelectActivePlayerUnit();
+        UpdateWindowTitle();
+    }
+
+    private IReadOnlyList<BattleUnit> GetPlayerUnits()
+    {
+        return _units
+            .Where(unit =>
+                unit.Team == BattleTeam.Player)
+            .ToList();
+    }
+
+    private static IReadOnlyList<EquipmentItem> CreateStarterGear()
+    {
+        return new List<EquipmentItem>
+        {
+            new()
+            {
+                Name = "Leather Cap",
+                Slot = EquipmentSlot.Head,
+                HealthBonus = 2,
+                DefenseBonus = 1
+            },
+            new()
+            {
+                Name = "Iron Helm",
+                Slot = EquipmentSlot.Head,
+                DefenseBonus = 2
+            },
+            new()
+            {
+                Name = "Padded Vest",
+                Slot = EquipmentSlot.Chest,
+                HealthBonus = 4,
+                DefenseBonus = 1
+            },
+            new()
+            {
+                Name = "Brigandine",
+                Slot = EquipmentSlot.Chest,
+                HealthBonus = 2,
+                DefenseBonus = 3
+            },
+            new()
+            {
+                Name = "Traveler Pants",
+                Slot = EquipmentSlot.Legs,
+                MovementBonus = 1
+            },
+            new()
+            {
+                Name = "Greaves",
+                Slot = EquipmentSlot.Legs,
+                DefenseBonus = 2
+            },
+            new()
+            {
+                Name = "Leather Gloves",
+                Slot = EquipmentSlot.Arms,
+                AttackBonus = 1
+            },
+            new()
+            {
+                Name = "Guard Bracers",
+                Slot = EquipmentSlot.Arms,
+                DefenseBonus = 1
+            },
+            new()
+            {
+                Name = "Lucky Coin",
+                Slot = EquipmentSlot.Charm1,
+                HealthBonus = 1,
+                AttackBonus = 1
+            },
+            new()
+            {
+                Name = "Wind Thread",
+                Slot = EquipmentSlot.Charm2,
+                MovementBonus = 1
+            }
+        };
+    }
+
+    private static IReadOnlyList<UnitJobDefinition> CreateJobDefinitions()
+    {
+        return new List<UnitJobDefinition>
+        {
+            new()
+            {
+                Name = "Swordsman",
+                Description = "Balanced front-line fighter.",
+                MaximumHealth = 20,
+                AttackDamage = 4,
+                AttackRange = 1,
+                MovementRange = 4,
+                JumpHeight = 1
+            },
+            new()
+            {
+                Name = "Archer",
+                Description = "Ranged attacker with lighter armor.",
+                MaximumHealth = 16,
+                AttackDamage = 3,
+                AttackRange = 3,
+                MovementRange = 4,
+                JumpHeight = 1
+            },
+            new()
+            {
+                Name = "Mage",
+                Description = "Fragile unit with strong ranged magic.",
+                MaximumHealth = 12,
+                AttackDamage = 5,
+                AttackRange = 3,
+                MovementRange = 3,
+                JumpHeight = 1
+            },
+            new()
+            {
+                Name = "Cleric",
+                Description = "Sturdy support caster.",
+                MaximumHealth = 17,
+                AttackDamage = 2,
+                AttackRange = 2,
+                MovementRange = 4,
+                JumpHeight = 1
+            },
+            new()
+            {
+                Name = "Knight",
+                Description = "Durable guard with short reach.",
+                MaximumHealth = 24,
+                AttackDamage = 4,
+                AttackRange = 1,
+                MovementRange = 3,
+                JumpHeight = 1
+            },
+            new()
+            {
+                Name = "Thief",
+                Description = "Fast skirmisher with modest damage.",
+                MaximumHealth = 15,
+                AttackDamage = 3,
+                AttackRange = 1,
+                MovementRange = 6,
+                JumpHeight = 1
+            }
+        };
+    }
+
+    private static IReadOnlyList<string> CreateInstructionLines()
+    {
+        return new List<string>
+        {
+            "Select the active unit, then choose Move, Attack, or Wait from the command menu.",
+            "Move shows reachable tiles. Left-click a highlighted tile to travel there.",
+            "Attack shows targetable tiles. Left-click an enemy inside the highlighted range.",
+            "Wait ends the commanded unit's turn and advances to the next ready party member.",
+            "Press P during player turns to open party management and assign gear.",
+            "Middle-drag pans the camera. Mouse wheel zooms. Home resets the camera."
+        };
+    }
+
+    private static IReadOnlyList<string> CreateOptionLines()
+    {
+        return new List<string>
+        {
+            "Display: Windowed",
+            "Battle Speed: Normal",
+            "Camera: Mouse pan and wheel zoom",
+            "Audio: Off"
+        };
+    }
+
     private void UpdateUnitMovement(
         GameTime gameTime)
     {
@@ -339,12 +933,34 @@ public sealed class Game1 : Game
             return;
         }
 
+        var movingUnit =
+            _unitMovementController.MovingUnit;
+
         var didFinishMoving =
             _unitMovementController.Update(
                 gameTime);
 
         if (!didFinishMoving)
         {
+            return;
+        }
+
+        if (_isEnemyTurnRunning &&
+            movingUnit is not null &&
+            movingUnit.Team == BattleTeam.Enemy)
+        {
+            movingUnit.TurnState.MarkMoved();
+            _selectedTile =
+                movingUnit.Position;
+
+            _interactionMode =
+                BattleInteractionMode.Idle;
+
+            EndEnemyUnitTurn(
+                movingUnit);
+
+            ContinueEnemyTurn();
+            UpdateWindowTitle();
             return;
         }
 
@@ -526,8 +1142,12 @@ public sealed class Game1 : Game
 
         if (!_hoveredTile.HasValue)
         {
-            ClearSelectedUnit();
-            _selectedTile = null;
+            if (!SelectActivePlayerUnit())
+            {
+                ClearSelectedUnit();
+                _selectedTile = null;
+            }
+
             return;
         }
 
@@ -544,7 +1164,205 @@ public sealed class Game1 : Game
             return;
         }
 
-        ClearSelectedUnit();
+        if (!SelectActivePlayerUnit())
+        {
+            ClearSelectedUnit();
+        }
+    }
+
+    private void BeginEnemyTurn()
+    {
+        _isEnemyTurnRunning = true;
+        _lastSelectedAction = null;
+        _selectedUnit = null;
+        _hoveredUnit = null;
+        _battleActionMenu?.Hide();
+        ClearActionOverlays();
+
+        ContinueEnemyTurn();
+    }
+
+    private void ContinueEnemyTurn()
+    {
+        while (_isEnemyTurnRunning)
+        {
+            if (_battleTurnController.ActiveTeam !=
+                BattleTeam.Enemy)
+            {
+                FinishEnemyTurn();
+                return;
+            }
+
+            if (_battleGrid is null ||
+                _movementRangeCalculator is null)
+            {
+                _battleTurnController.SkipActiveTeamTurn(
+                    _units);
+
+                FinishEnemyTurn();
+                return;
+            }
+
+            var enemy =
+                _battleTurnController.ActiveUnit;
+
+            if (enemy is null)
+            {
+                _battleTurnController.SkipActiveTeamTurn(
+                    _units);
+
+                FinishEnemyTurn();
+                return;
+            }
+
+            _selectedTile =
+                enemy.Position;
+
+            var decision =
+                _enemyAiController.DecideAction(
+                    _battleGrid,
+                    enemy,
+                    _units,
+                    _movementRangeCalculator);
+
+            switch (decision.Type)
+            {
+                case EnemyTurnDecisionType.Attack:
+
+                    if (decision.Target is not null)
+                    {
+                        ResolveEnemyAttack(
+                            enemy,
+                            decision.Target);
+                    }
+
+                    EndEnemyUnitTurn(
+                        enemy);
+
+                    continue;
+
+                case EnemyTurnDecisionType.Move:
+
+                    if (decision.Destination.HasValue &&
+                        TryBeginEnemyMovement(
+                            enemy,
+                            decision.Destination.Value))
+                    {
+                        return;
+                    }
+
+                    EndEnemyUnitTurn(
+                        enemy);
+
+                    continue;
+
+                case EnemyTurnDecisionType.Wait:
+                    EndEnemyUnitTurn(
+                        enemy);
+
+                    continue;
+
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+        }
+    }
+
+    private bool TryBeginEnemyMovement(
+        BattleUnit enemy,
+        Point destination)
+    {
+        if (_battleGrid is null ||
+            _movementRangeCalculator is null)
+        {
+            return false;
+        }
+
+        var searchResult =
+            _movementRangeCalculator
+                .CalculateReachableTiles(
+                    _battleGrid,
+                    enemy);
+
+        var path =
+            searchResult.BuildPath(
+                enemy.Position,
+                destination);
+
+        if (path.Count == 0)
+        {
+            return false;
+        }
+
+        ClearActionOverlays();
+
+        _lastCombatMessage =
+            $"{enemy.Name} moves";
+
+        _interactionMode =
+            BattleInteractionMode.AnimatingMovement;
+
+        _unitMovementController.BeginMove(
+            _battleGrid,
+            enemy,
+            path);
+
+        UpdateWindowTitle();
+
+        return true;
+    }
+
+    private void ResolveEnemyAttack(
+        BattleUnit enemy,
+        BattleUnit target)
+    {
+        if (_battleGrid is null)
+        {
+            return;
+        }
+
+        var result =
+            _battleResolver.Attack(
+                _battleGrid,
+                enemy,
+                target);
+
+        enemy.TurnState.MarkActed();
+
+        _lastCombatMessage =
+            result.WasDefeated
+                ? $"{result.TargetName} was defeated"
+                : $"{result.TargetName}: {result.RemainingHealth} HP remaining";
+
+        if (result.WasDefeated)
+        {
+            _units.Remove(
+                target);
+        }
+    }
+
+    private void EndEnemyUnitTurn(
+        BattleUnit enemy)
+    {
+        _battleTurnController.EndUnitTurn(
+            enemy,
+            _units);
+    }
+
+    private void FinishEnemyTurn()
+    {
+        _isEnemyTurnRunning = false;
+        _selectedTile = null;
+
+        if (_interactionMode ==
+            BattleInteractionMode.AnimatingMovement)
+        {
+            _interactionMode =
+                BattleInteractionMode.Idle;
+        }
+
+        SelectActivePlayerUnit();
+        UpdateWindowTitle();
     }
 
     private bool TrySelectBattleAction()
@@ -819,13 +1637,11 @@ public sealed class Game1 : Game
         if (_battleTurnController.ActiveTeam ==
             BattleTeam.Enemy)
         {
-            _lastCombatMessage =
-                "Enemy phase placeholder: skipped";
-
-            _battleTurnController.SkipActiveTeamTurn(
-                _units);
+            BeginEnemyTurn();
+            return;
         }
 
+        SelectActivePlayerUnit();
         UpdateWindowTitle();
     }
 
@@ -837,6 +1653,51 @@ public sealed class Game1 : Game
             Array.Empty<Point>();
         _movementSearchResult =
             null;
+    }
+
+    private bool SelectActivePlayerUnit()
+    {
+        if (_battleTurnController.ActiveTeam !=
+                BattleTeam.Player ||
+            _battleTurnController.ActiveUnit is null)
+        {
+            return false;
+        }
+
+        var activeUnit =
+            _battleTurnController.ActiveUnit;
+
+        if (!_battleTurnController.CanSelectUnit(
+                activeUnit))
+        {
+            return false;
+        }
+
+        if (_selectedUnit == activeUnit)
+        {
+            _selectedTile =
+                activeUnit.Position;
+
+            if (_interactionMode ==
+                BattleInteractionMode.Idle)
+            {
+                _interactionMode =
+                    BattleInteractionMode.UnitSelected;
+            }
+
+            if (_interactionMode ==
+                BattleInteractionMode.UnitSelected)
+            {
+                ShowActionMenuForSelectedUnit();
+            }
+
+            return true;
+        }
+
+        SelectUnit(
+            activeUnit);
+
+        return true;
     }
 
     private void SelectUnit(BattleUnit unit)
@@ -891,6 +1752,20 @@ public sealed class Game1 : Game
             GetDefaultMapOrigin();
     }
 
+    private void OnTextInput(
+        object sender,
+        TextInputEventArgs e)
+    {
+        if (_currentScreen !=
+            GameScreen.TeamSelection)
+        {
+            return;
+        }
+
+        _teamSelectionScreen?.HandleTextInput(
+            e.Character);
+    }
+
     private Vector2 GetDefaultMapOrigin()
     {
         if (_loadedMap is null)
@@ -931,9 +1806,54 @@ public sealed class Game1 : Game
 
     private void UpdateWindowTitle()
     {
+        if (_currentScreen == GameScreen.MainMenu)
+        {
+            Window.Title =
+                "Tactics Game - Main Menu";
+
+            return;
+        }
+
+        if (_currentScreen == GameScreen.Instructions)
+        {
+            Window.Title =
+                "Tactics Game - Instructions";
+
+            return;
+        }
+
+        if (_currentScreen == GameScreen.Options)
+        {
+            Window.Title =
+                "Tactics Game - Options";
+
+            return;
+        }
+
+        if (_currentScreen == GameScreen.TeamSelection)
+        {
+            Window.Title =
+                "Tactics Game - Team Selection";
+
+            return;
+        }
+
+        if (_currentScreen == GameScreen.PartyManagement)
+        {
+            Window.Title =
+                "Tactics Game - Party Management";
+
+            return;
+        }
+
         var zoomPercentage =
             (int)Math.Round(
                 _camera.Zoom * 100.0f);
+
+        var activeUnitText =
+            _battleTurnController.ActiveUnit is null
+                ? string.Empty
+                : $" - Unit: {_battleTurnController.ActiveUnit.Name}";
 
         var commandText =
             _lastSelectedAction.HasValue
@@ -965,6 +1885,7 @@ public sealed class Game1 : Game
         Window.Title =
             $"Tactics Game - Round: {_battleTurnController.RoundNumber}" +
             $" - Team: {_battleTurnController.ActiveTeam}" +
+            $"{activeUnitText}" +
             $" - Zoom: {zoomPercentage}%" +
             $"{commandText}{modeText}{combatText}";
     }

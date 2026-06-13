@@ -61,7 +61,7 @@ public sealed class BattleHud : IDisposable
                 10,
                 10,
                 220,
-                70);
+                96);
 
         DrawPanel(
             spriteBatch,
@@ -78,6 +78,17 @@ public sealed class BattleHud : IDisposable
             $"{turnController.ActiveTeam} Turn",
             new Vector2(20, 45),
             Color.White);
+
+        if (turnController.ActiveUnit is null)
+        {
+            return;
+        }
+
+        spriteBatch.DrawString(
+            font,
+            $"Command: {turnController.ActiveUnit.Name}",
+            new Vector2(20, 70),
+            new Color(232, 194, 103, 255));
     }
 
     private void DrawSelectedUnitPanel(
@@ -104,7 +115,7 @@ public sealed class BattleHud : IDisposable
 
         spriteBatch.DrawString(
             font,
-            $"HP {unit.CurrentHealth}/{unit.MaximumHealth}",
+            $"HP {unit.CurrentHealth}/{unit.EffectiveMaximumHealth}",
             new Vector2(20, 740),
             Color.White);
 
@@ -149,7 +160,7 @@ public sealed class BattleHud : IDisposable
 
         spriteBatch.DrawString(
             font,
-            $"HP {unit.CurrentHealth}/{unit.MaximumHealth}",
+            $"HP {unit.CurrentHealth}/{unit.EffectiveMaximumHealth}",
             new Vector2(1310, 740),
             Color.White);
     }

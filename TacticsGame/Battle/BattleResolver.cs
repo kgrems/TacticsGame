@@ -42,9 +42,15 @@ public sealed class BattleResolver
                 $"Target '{target.Name}' is outside attack range.");
         }
 
+        var damage =
+            Math.Max(
+                1,
+                attacker.EffectiveAttackDamage -
+                target.EffectiveDefense);
+
         target.CurrentHealth = Math.Max(
             0,
-            target.CurrentHealth - attacker.AttackDamage);
+            target.CurrentHealth - damage);
 
         if (target.IsDefeated)
         {
@@ -54,7 +60,7 @@ public sealed class BattleResolver
         return new AttackResult(
             AttackerName: attacker.Name,
             TargetName: target.Name,
-            Damage: attacker.AttackDamage,
+            Damage: damage,
             RemainingHealth: target.CurrentHealth,
             WasDefeated: target.IsDefeated);
     }

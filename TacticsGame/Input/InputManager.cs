@@ -11,6 +11,8 @@ public sealed class InputManager
 {
     private MouseState _currentMouseState;
     private MouseState _previousMouseState;
+    private KeyboardState _currentKeyboardState;
+    private KeyboardState _previousKeyboardState;
 
     public InputManager()
     {
@@ -19,6 +21,12 @@ public sealed class InputManager
 
         _previousMouseState =
             _currentMouseState;
+
+        _currentKeyboardState =
+            Keyboard.GetState();
+
+        _previousKeyboardState =
+            _currentKeyboardState;
     }
 
     public Point MousePosition =>
@@ -54,6 +62,15 @@ public sealed class InputManager
         _currentMouseState.ScrollWheelValue -
         _previousMouseState.ScrollWheelValue;
 
+    public bool IsKeyPressed(
+        Keys key)
+    {
+        return _currentKeyboardState.IsKeyDown(
+                   key) &&
+               _previousKeyboardState.IsKeyUp(
+                   key);
+    }
+
     public void Update()
     {
         _previousMouseState =
@@ -61,5 +78,11 @@ public sealed class InputManager
 
         _currentMouseState =
             Mouse.GetState();
+
+        _previousKeyboardState =
+            _currentKeyboardState;
+
+        _currentKeyboardState =
+            Keyboard.GetState();
     }
 }
