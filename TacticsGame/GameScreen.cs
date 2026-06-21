@@ -4,6 +4,8 @@ public enum GameScreen
     Instructions,
     Options,
     TeamSelection,
+    WorldMap,
     Battle,
-    PartyManagement
+    PartyManagement,
+    Victory
 }

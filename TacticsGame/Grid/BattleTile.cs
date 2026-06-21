@@ -12,14 +12,14 @@ public sealed class BattleTile
 
     public bool IsWalkable { get; set; }
 
-    public int Elevation { get; set; }
+    public TerrainType TerrainType { get; set; }
 
     public BattleUnit? OccupyingUnit { get; set; }
 
     public BattleTile(
         Point position,
         bool isWalkable,
-        int elevation = 0)
+        TerrainType terrainType = TerrainType.Grass)
     {
         Position =
             position;
@@ -27,7 +27,7 @@ public sealed class BattleTile
         IsWalkable =
             isWalkable;
 
-        Elevation =
-            elevation;
+        TerrainType =
+            terrainType;
     }
 }

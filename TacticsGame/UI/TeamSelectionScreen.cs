@@ -584,7 +584,7 @@ public sealed class TeamSelectionScreen : IDisposable
             spriteBatch,
             font,
             GetStartButtonRectangle(viewport),
-            "Start Battle",
+            "Start Campaign",
             _isStartHovered,
             CanStart());
     }

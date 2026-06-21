@@ -71,11 +71,19 @@ public sealed class IsometricMapRenderer
         Vector2 screenPosition,
         out Point gridPosition)
     {
-        var tileWidth = _loadedMap.Map.TileWidth;
-        var tileHeight = _loadedMap.Map.TileHeight;
+        var tileWidth =
+            _loadedMap.Map.TileWidth;
 
-        var halfTileWidth = tileWidth / 2.0f;
-        var halfTileHeight = tileHeight / 2.0f;
+        var tileHeight =
+            _loadedMap.Map.TileHeight;
+
+        var halfTileWidth =
+            tileWidth /
+            2.0f;
+
+        var halfTileHeight =
+            tileHeight /
+            2.0f;
 
         var localX =
             screenPosition.X -
@@ -95,17 +103,23 @@ public sealed class IsometricMapRenderer
              (localX / halfTileWidth)) /
             2.0f;
 
-        gridPosition = new Point(
-            x: (int)MathF.Floor(gridX),
-            y: (int)MathF.Floor(gridY));
+        gridPosition =
+            new Point(
+                (int)MathF.Floor(
+                    gridX),
+                (int)MathF.Floor(
+                    gridY));
 
-        if (!IsInsideMap(gridPosition))
+        if (!IsInsideMap(
+                gridPosition))
         {
-            return false;
+            return
+                false;
         }
 
-        return HasGroundTileAt(
-            gridPosition);
+        return
+            HasGroundTileAt(
+                gridPosition);
     }
 
     /// <summary>
@@ -346,4 +360,5 @@ public sealed class IsometricMapRenderer
             ~FlippedDiagonallyFlag &
             ~RotatedHexagonal120Flag;
     }
+
 }

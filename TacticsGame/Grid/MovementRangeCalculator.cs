@@ -31,45 +31,35 @@ public sealed class MovementRangeCalculator
             new Dictionary<Point, Point>();
 
         var pendingTiles =
-            new Queue<MovementStep>();
+            new PriorityQueue<Point, int>();
 
         bestCosts[
             unit.Position] =
             0;
 
         pendingTiles.Enqueue(
-            new MovementStep(
-                Position:
-                    unit.Position,
-
-                Cost:
-                    0));
+            unit.Position,
+            0);
 
         while (pendingTiles.Count >
                0)
         {
-            var currentStep =
+            var currentPosition =
                 pendingTiles.Dequeue();
+
+            var currentCost =
+                bestCosts[
+                    currentPosition];
 
             var currentTile =
                 battleGrid.GetTile(
-                    currentStep.Position);
+                    currentPosition);
 
             foreach (var neighborTile
                      in battleGrid
                          .GetCardinalNeighbors(
-                             currentStep.Position))
+                             currentPosition))
             {
-                var newCost =
-                    currentStep.Cost +
-                    1;
-
-                if (newCost >
-                    unit.EffectiveMovementRange)
-                {
-                    continue;
-                }
-
                 if (!battleGrid.CanEnterTile(
                         neighborTile,
                         unit))
@@ -77,13 +67,23 @@ public sealed class MovementRangeCalculator
                     continue;
                 }
 
-                var elevationDifference =
-                    Math.Abs(
-                        neighborTile.Elevation -
-                        currentTile.Elevation);
+                var stepCost =
+                    battleGrid.GetMovementCost(
+                        currentTile,
+                        neighborTile,
+                        unit);
 
-                if (elevationDifference >
-                    unit.JumpHeight)
+                if (stepCost == int.MaxValue)
+                {
+                    continue;
+                }
+
+                var newCost =
+                    currentCost +
+                    stepCost;
+
+                if (newCost >
+                    unit.EffectiveMovementRange)
                 {
                     continue;
                 }
@@ -103,18 +103,14 @@ public sealed class MovementRangeCalculator
 
                 previousTiles[
                     neighborTile.Position] =
-                    currentStep.Position;
+                    currentPosition;
 
                 reachableTiles.Add(
                     neighborTile.Position);
 
                 pendingTiles.Enqueue(
-                    new MovementStep(
-                        Position:
-                            neighborTile.Position,
-
-                        Cost:
-                            newCost));
+                    neighborTile.Position,
+                    newCost);
             }
         }
 
@@ -123,8 +119,4 @@ public sealed class MovementRangeCalculator
                 reachableTiles,
                 previousTiles);
     }
-
-    private sealed record MovementStep(
-        Point Position,
-        int Cost);
 }

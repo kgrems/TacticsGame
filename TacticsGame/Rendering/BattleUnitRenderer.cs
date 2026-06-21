@@ -23,6 +23,7 @@ public sealed class BattleUnitRenderer : IDisposable
     private readonly Texture2D _placeholderTexture;
     private readonly Texture2D? _batTexture;
     private readonly IReadOnlyDictionary<string, Texture2D> _unitTextures;
+    private readonly IReadOnlyDictionary<string, Texture2D> _enemyTextures;
 
     private readonly int _tileWidth;
     private readonly int _tileHeight;
@@ -33,7 +34,8 @@ public sealed class BattleUnitRenderer : IDisposable
         int tileWidth,
         int tileHeight,
         Texture2D? batTexture,
-        IReadOnlyDictionary<string, Texture2D> unitTextures)
+        IReadOnlyDictionary<string, Texture2D> unitTextures,
+        IReadOnlyDictionary<string, Texture2D> enemyTextures)
     {
         ArgumentNullException.ThrowIfNull(
             graphicsDevice);
@@ -57,6 +59,11 @@ public sealed class BattleUnitRenderer : IDisposable
             throw new ArgumentNullException(
                 nameof(unitTextures));
 
+        _enemyTextures =
+            enemyTextures ??
+            throw new ArgumentNullException(
+                nameof(enemyTextures));
+
         _placeholderTexture =
             CreatePlaceholderTexture(
                 graphicsDevice);
@@ -72,15 +79,30 @@ public sealed class BattleUnitRenderer : IDisposable
         ArgumentNullException.ThrowIfNull(
             unit);
 
-        if (unit.Team == BattleTeam.Enemy &&
-            _batTexture is not null)
+        if (unit.Team == BattleTeam.Enemy)
         {
-            DrawAnimatedUnit(
-                spriteBatch,
-                unit,
-                _batTexture);
+            if (_enemyTextures.TryGetValue(
+                    unit.SpriteKey,
+                    out var enemyTexture))
+            {
+                DrawAnimatedUnit(
+                    spriteBatch,
+                    unit,
+                    enemyTexture);
 
-            return;
+                return;
+            }
+
+            if (_batTexture is not null)
+            {
+                DrawAnimatedUnit(
+                    spriteBatch,
+                    unit,
+                    _batTexture);
+
+                return;
+            }
+
         }
 
         if (unit.Team == BattleTeam.Player &&

@@ -109,7 +109,7 @@ public sealed class BattleHud : IDisposable
 
         spriteBatch.DrawString(
             font,
-            unit.Name,
+            $"{unit.Name}  Lv {unit.Level}",
             new Vector2(20, 710),
             Color.White);
 
@@ -154,7 +154,7 @@ public sealed class BattleHud : IDisposable
 
         spriteBatch.DrawString(
             font,
-            unit.Name,
+            $"{unit.Name}  Lv {unit.Level}",
             new Vector2(1310, 710),
             Color.White);
 

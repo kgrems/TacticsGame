@@ -435,7 +435,7 @@ public sealed class PartyManagementScreen : IDisposable
 
         spriteBatch.DrawString(
             font,
-            $"HP {unit.CurrentHealth}/{unit.EffectiveMaximumHealth}",
+            $"Lv {unit.Level}  HP {unit.CurrentHealth}/{unit.EffectiveMaximumHealth}",
             new Vector2(
                 rowRectangle.X + 12,
                 rowRectangle.Y + 31),
@@ -503,6 +503,7 @@ public sealed class PartyManagementScreen : IDisposable
         }
 
         var summary =
+            $"Lv {_selectedUnit.Level}  XP {_selectedUnit.ExperienceIntoLevel}/{BattleUnit.ExperiencePerLevel}  " +
             $"HP {_selectedUnit.EffectiveMaximumHealth}  " +
             $"ATK {_selectedUnit.EffectiveAttackDamage}  " +
             $"DEF {_selectedUnit.EffectiveDefense}  " +

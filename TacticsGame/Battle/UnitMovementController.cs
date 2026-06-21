@@ -202,6 +202,7 @@ public sealed class UnitMovementController
                     _segmentProgress,
                     0.0f,
                     1.0f));
+
     }
 
     private void FinishMovement()
@@ -221,6 +222,7 @@ public sealed class UnitMovementController
 
         _segmentProgress =
             0.0f;
+
     }
 
     private static void UpdateFacing(

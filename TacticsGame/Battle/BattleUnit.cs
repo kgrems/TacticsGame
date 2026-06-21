@@ -9,9 +9,13 @@ namespace TacticsGame.Battle;
 
 public sealed class BattleUnit
 {
+    public const int ExperiencePerLevel = 100;
+
     public string Name { get; init; } = string.Empty;
 
     public string JobName { get; init; } = string.Empty;
+
+    public string SpriteKey { get; init; } = string.Empty;
 
     public BattleTeam Team { get; init; }
 
@@ -30,6 +34,16 @@ public sealed class BattleUnit
     public int MovementRange { get; init; }
 
     public int JumpHeight { get; init; }
+
+    public int Experience { get; private set; }
+
+    public int Level =>
+        1 +
+        (Experience / ExperiencePerLevel);
+
+    public int ExperienceIntoLevel =>
+        Experience %
+        ExperiencePerLevel;
 
     public EquipmentItem? HeadItem { get; set; }
 
@@ -109,22 +123,32 @@ public sealed class BattleUnit
     public int EffectiveMaximumHealth =>
         Math.Max(
             1,
-            MaximumHealth + HealthBonus);
+            MaximumHealth +
+            HealthBonus +
+            (LevelBonus * 2));
 
     public int EffectiveAttackDamage =>
         Math.Max(
             0,
-            AttackDamage + AttackBonus);
+            AttackDamage +
+            AttackBonus +
+            LevelBonus);
 
     public int EffectiveDefense =>
         Math.Max(
             0,
-            DefenseBonus);
+            DefenseBonus +
+            (LevelBonus / 2));
 
     public int EffectiveMovementRange =>
         Math.Max(
             0,
             MovementRange + MovementBonus);
+
+    private int LevelBonus =>
+        Math.Max(
+            0,
+            Level - 1);
 
     public EquipmentItem? GetEquippedItem(
         EquipmentSlot slot)
@@ -215,6 +239,39 @@ public sealed class BattleUnit
                 CurrentHealth,
                 1,
                 EffectiveMaximumHealth);
+    }
+
+    public void AddExperience(
+        int amount)
+    {
+        if (amount <= 0)
+        {
+            return;
+        }
+
+        var previousMaximumHealth =
+            EffectiveMaximumHealth;
+
+        Experience +=
+            amount;
+
+        var maximumHealthDelta =
+            EffectiveMaximumHealth -
+            previousMaximumHealth;
+
+        if (CurrentHealth > 0)
+        {
+            CurrentHealth +=
+                maximumHealthDelta;
+        }
+
+        ClampCurrentHealthToEffectiveMaximum();
+    }
+
+    public void RecoverAllHealth()
+    {
+        CurrentHealth =
+            EffectiveMaximumHealth;
     }
 
     public static bool CanEquipItemInSlot(

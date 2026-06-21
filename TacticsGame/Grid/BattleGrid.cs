@@ -79,16 +79,9 @@ public sealed class BattleGrid
             loadedMap.Map;
 
         var groundLayer =
-            map.Layers
-                .FirstOrDefault(layer =>
-                    string.Equals(
-                        layer.Name,
-                        GroundLayerName,
-                        StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(
-                        layer.Type,
-                        "tilelayer",
-                        StringComparison.OrdinalIgnoreCase));
+            FindTileLayer(
+                map,
+                GroundLayerName);
 
         if (groundLayer is null)
         {
@@ -117,6 +110,11 @@ public sealed class BattleGrid
                 $"Layer '{GroundLayerName}' has {groundLayer.Data.Count} tile entries, " +
                 $"but {expectedTileCount} were expected.");
         }
+
+        var firstGlobalTileId =
+            loadedMap.Tilesets.Count > 0
+                ? loadedMap.Tilesets[0].FirstGlobalTileId
+                : 1;
 
         var battleGrid =
             new BattleGrid(
@@ -155,8 +153,10 @@ public sealed class BattleGrid
                         isWalkable:
                             globalTileId != 0,
 
-                        elevation:
-                            0);
+                        terrainType:
+                            GetTerrainType(
+                                globalTileId,
+                                firstGlobalTileId));
 
                 battleGrid
                     ._tiles[
@@ -255,6 +255,25 @@ public sealed class BattleGrid
             movingUnit;
     }
 
+    public int GetMovementCost(
+        BattleTile fromTile,
+        BattleTile toTile,
+        BattleUnit movingUnit)
+    {
+        ArgumentNullException.ThrowIfNull(
+            fromTile);
+
+        ArgumentNullException.ThrowIfNull(
+            toTile);
+
+        ArgumentNullException.ThrowIfNull(
+            movingUnit);
+
+        return
+            GetTerrainMovementCost(
+                toTile.TerrainType);
+    }
+
     public void PlaceUnit(
         BattleUnit unit)
     {
@@ -276,6 +295,7 @@ public sealed class BattleGrid
 
         tile.OccupyingUnit =
             unit;
+
     }
 
     public void MoveUnit(
@@ -333,5 +353,56 @@ public sealed class BattleGrid
             ~FlippedVerticallyFlag &
             ~FlippedDiagonallyFlag &
             ~RotatedHexagonal120Flag;
+    }
+
+    private static TiledLayer? FindTileLayer(
+        TiledMap map,
+        string layerName)
+    {
+        return map.Layers
+            .FirstOrDefault(layer =>
+                string.Equals(
+                    layer.Name,
+                    layerName,
+                    StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(
+                    layer.Type,
+                    "tilelayer",
+                    StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static TerrainType GetTerrainType(
+        uint globalTileId,
+        uint firstGlobalTileId)
+    {
+        if (globalTileId == 0)
+        {
+            return
+                TerrainType.Grass;
+        }
+
+        var localTileId =
+            checked((int)(globalTileId - firstGlobalTileId));
+
+        return localTileId switch
+        {
+            0 => TerrainType.Stone,
+            1 => TerrainType.Dirt,
+            2 => TerrainType.Water,
+            _ => TerrainType.Grass
+        };
+    }
+
+    private static int GetTerrainMovementCost(
+        TerrainType terrainType)
+    {
+        return terrainType switch
+        {
+            TerrainType.Stone => 1,
+            TerrainType.Dirt => 1,
+            TerrainType.Grass => 2,
+            TerrainType.Water => 3,
+            _ => 1
+        };
     }
 }
