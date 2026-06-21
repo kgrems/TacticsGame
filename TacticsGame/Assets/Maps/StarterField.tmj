@@ -39,7 +39,7 @@
  "tilesets":[
         {
          "firstgid":1,
-         "source":"..\/..\/..\/..\/..\/..\/Downloads\/StarterTerrain.tsx"
+         "source":"..\/Tilesets\/StarterTerrain.tsj"
         }],
  "tilewidth":64,
  "type":"map",

@@ -3,7 +3,7 @@
  <editorsettings>
   <export target="StarterField.tmj" format="json"/>
  </editorsettings>
- <tileset firstgid="1" source="../../../../../../Downloads/StarterTerrain.tsx"/>
+ <tileset firstgid="1" source="../Maps/StarterTerrain.tsx"/>
  <layer id="1" name="Ground_Elevation_0" width="10" height="10">
   <data encoding="csv">
 2,2,4,4,2,4,4,4,4,4,

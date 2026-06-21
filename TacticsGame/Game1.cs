@@ -43,6 +43,9 @@ public sealed class Game1 : Game
 
     private SpriteBatch? _spriteBatch;
     private SpriteFont? _uiFont;
+    private Texture2D? _batAtlasTexture;
+    private readonly Dictionary<string, Texture2D> _unitAtlasTextures =
+        new(StringComparer.OrdinalIgnoreCase);
 
     private LoadedTiledMap? _loadedMap;
     private IsometricMapRenderer? _mapRenderer;
@@ -111,6 +114,9 @@ public sealed class Game1 : Game
         _battleHud = new BattleHud(
             GraphicsDevice);
 
+        var jobDefinitions =
+            CreateJobDefinitions();
+
         var mapFilePath = Path.Combine(
             AppContext.BaseDirectory,
             "Assets",
@@ -143,11 +149,23 @@ public sealed class Game1 : Game
             _loadedMap.Map.TileWidth,
             _loadedMap.Map.TileHeight);
 
+        _batAtlasTexture =
+            LoadTextureFromAsset(
+                "Assets",
+                "Sprites",
+                "Monsters",
+                "BatAtlas.png");
+
+        LoadUnitAtlasTextures(
+            jobDefinitions);
+
         _battleUnitRenderer = new BattleUnitRenderer(
             GraphicsDevice,
             _mapRenderer,
             _loadedMap.Map.TileWidth,
-            _loadedMap.Map.TileHeight);
+            _loadedMap.Map.TileHeight,
+            _batAtlasTexture,
+            _unitAtlasTextures);
 
         _battleActionMenu = new BattleActionMenu(
             GraphicsDevice);
@@ -170,7 +188,7 @@ public sealed class Game1 : Game
 
         _teamSelectionScreen = new TeamSelectionScreen(
             GraphicsDevice,
-            CreateJobDefinitions(),
+            jobDefinitions,
             PartySize);
 
         _movementRangeCalculator =
@@ -250,6 +268,9 @@ public sealed class Game1 : Game
         UpdateUnitMovement(
             gameTime);
 
+        UpdateUnitAnimations(
+            gameTime);
+
         if (wasEnemyTurnActive ||
             _isEnemyTurnRunning ||
             _battleTurnController.ActiveTeam == BattleTeam.Enemy)
@@ -312,6 +333,13 @@ public sealed class Game1 : Game
         _attackRangeRenderer?.Dispose();
         _movementRangeRenderer?.Dispose();
         _tileHighlightRenderer?.Dispose();
+        foreach (var texture in _unitAtlasTextures.Values)
+        {
+            texture.Dispose();
+        }
+
+        _unitAtlasTextures.Clear();
+        _batAtlasTexture?.Dispose();
         _loadedMap?.Dispose();
         _battleHud?.Dispose();
         base.UnloadContent();
@@ -667,6 +695,7 @@ public sealed class Game1 : Game
         return new BattleUnit
         {
             Name = selection.Name,
+            JobName = job.Name,
             Team = BattleTeam.Player,
             Position = position,
             RenderGridPosition =
@@ -688,13 +717,13 @@ public sealed class Game1 : Game
         {
             new()
             {
-                Name = "Rat",
+                Name = "Bat",
                 Team = BattleTeam.Enemy,
                 Position = new Point(6, 5),
                 RenderGridPosition = new Vector2(6.0f, 5.0f),
-                MaximumHealth = 8,
-                CurrentHealth = 8,
-                AttackDamage = 2,
+                MaximumHealth = 10,
+                CurrentHealth = 10,
+                AttackDamage = 3,
                 AttackRange = 1,
                 MovementRange = 5,
                 JumpHeight = 1
@@ -831,6 +860,41 @@ public sealed class Game1 : Game
                 MovementBonus = 1
             }
         };
+    }
+
+    private Texture2D LoadTextureFromAsset(
+        params string[] relativePathParts)
+    {
+        var filePath =
+            Path.Combine(
+                new[]
+                {
+                    AppContext.BaseDirectory
+                }.Concat(relativePathParts).ToArray());
+
+        using var stream =
+            File.OpenRead(
+                filePath);
+
+        return Texture2D.FromStream(
+            GraphicsDevice,
+            stream);
+    }
+
+    private void LoadUnitAtlasTextures(
+        IEnumerable<UnitJobDefinition> jobDefinitions)
+    {
+        _unitAtlasTextures.Clear();
+
+        foreach (var jobDefinition in jobDefinitions)
+        {
+            _unitAtlasTextures[jobDefinition.Name] =
+                LoadTextureFromAsset(
+                    "Assets",
+                    "Sprites",
+                    "Units",
+                    $"{jobDefinition.Name}Atlas.png");
+        }
     }
 
     private static IReadOnlyList<UnitJobDefinition> CreateJobDefinitions()
@@ -978,6 +1042,49 @@ public sealed class Game1 : Game
                 : BattleInteractionMode.UnitSelected;
 
         UpdateWindowTitle();
+    }
+
+    private void UpdateUnitAnimations(
+        GameTime gameTime)
+    {
+        var elapsedSeconds =
+            (float)gameTime.ElapsedGameTime.TotalSeconds;
+
+        foreach (var unit in _units)
+        {
+            var animationState =
+                GetAnimationStateForUnit(
+                    unit);
+
+            unit.SetAnimationState(
+                animationState);
+
+            unit.AdvanceAnimation(
+                elapsedSeconds);
+        }
+    }
+
+    private BattleUnitAnimationState GetAnimationStateForUnit(
+        BattleUnit unit)
+    {
+        if (unit.IsDefeated)
+        {
+            return BattleUnitAnimationState.Prone;
+        }
+
+        if (_unitMovementController.MovingUnit == unit)
+        {
+            return BattleUnitAnimationState.Walk;
+        }
+
+        if (unit.AnimationState ==
+                BattleUnitAnimationState.Attack &&
+            unit.AnimationElapsedSeconds < 0.45f)
+        {
+            return BattleUnitAnimationState.Attack;
+        }
+
+        return BattleUnitAnimationState.Idle;
     }
 
     private void UpdatePan()
@@ -1321,6 +1428,13 @@ public sealed class Game1 : Game
             return;
         }
 
+        FaceUnitToward(
+            enemy,
+            target.Position);
+
+        enemy.SetAnimationState(
+            BattleUnitAnimationState.Attack);
+
         var result =
             _battleResolver.Attack(
                 _battleGrid,
@@ -1334,11 +1448,6 @@ public sealed class Game1 : Game
                 ? $"{result.TargetName} was defeated"
                 : $"{result.TargetName}: {result.RemainingHealth} HP remaining";
 
-        if (result.WasDefeated)
-        {
-            _units.Remove(
-                target);
-        }
     }
 
     private void EndEnemyUnitTurn(
@@ -1347,6 +1456,35 @@ public sealed class Game1 : Game
         _battleTurnController.EndUnitTurn(
             enemy,
             _units);
+    }
+
+    private static void FaceUnitToward(
+        BattleUnit unit,
+        Point targetPosition)
+    {
+        var deltaX =
+            targetPosition.X -
+            unit.Position.X;
+
+        var deltaY =
+            targetPosition.Y -
+            unit.Position.Y;
+
+        if (Math.Abs(deltaX) >=
+            Math.Abs(deltaY))
+        {
+            unit.Facing =
+                deltaX >= 0
+                    ? UnitFacing.FrontRight
+                    : UnitFacing.BackLeft;
+
+            return;
+        }
+
+        unit.Facing =
+            deltaY >= 0
+                ? UnitFacing.FrontLeft
+                : UnitFacing.BackRight;
     }
 
     private void FinishEnemyTurn()
@@ -1545,6 +1683,13 @@ public sealed class Game1 : Game
             return;
         }
 
+        FaceUnitToward(
+            _selectedUnit,
+            target.Position);
+
+        _selectedUnit.SetAnimationState(
+            BattleUnitAnimationState.Attack);
+
         var result =
             _battleResolver.Attack(
                 _battleGrid,
@@ -1555,12 +1700,6 @@ public sealed class Game1 : Game
             result.WasDefeated
                 ? $"{result.TargetName} was defeated"
                 : $"{result.TargetName}: {result.RemainingHealth} HP remaining";
-
-        if (result.WasDefeated)
-        {
-            _units.Remove(
-                target);
-        }
 
         EndActionSelection(
             showMenu: true);

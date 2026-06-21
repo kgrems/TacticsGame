@@ -1,22 +1,28 @@
 ﻿using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
+using System.Collections.Generic;
 using TacticsGame.Battle;
 
 namespace TacticsGame.Rendering;
 
 /// <summary>
 /// Draws battle units on the isometric map.
-/// This starter version generates a temporary blue swordsman-like
-/// placeholder sprite in memory so no external image is required.
 /// </summary>
 public sealed class BattleUnitRenderer : IDisposable
 {
     private const int SpriteWidth = 24;
     private const int SpriteHeight = 40;
+    private const int AnimatedFrameSize = 64;
+    private const int IdleStartColumn = 0;
+    private const int WalkStartColumn = 2;
+    private const int AttackStartColumn = 6;
+    private const int ProneStartColumn = 10;
 
     private readonly IsometricMapRenderer _mapRenderer;
     private readonly Texture2D _placeholderTexture;
+    private readonly Texture2D? _batTexture;
+    private readonly IReadOnlyDictionary<string, Texture2D> _unitTextures;
 
     private readonly int _tileWidth;
     private readonly int _tileHeight;
@@ -25,7 +31,9 @@ public sealed class BattleUnitRenderer : IDisposable
         GraphicsDevice graphicsDevice,
         IsometricMapRenderer mapRenderer,
         int tileWidth,
-        int tileHeight)
+        int tileHeight,
+        Texture2D? batTexture,
+        IReadOnlyDictionary<string, Texture2D> unitTextures)
     {
         ArgumentNullException.ThrowIfNull(
             graphicsDevice);
@@ -40,6 +48,14 @@ public sealed class BattleUnitRenderer : IDisposable
 
         _tileHeight =
             tileHeight;
+
+        _batTexture =
+            batTexture;
+
+        _unitTextures =
+            unitTextures ??
+            throw new ArgumentNullException(
+                nameof(unitTextures));
 
         _placeholderTexture =
             CreatePlaceholderTexture(
@@ -56,21 +72,40 @@ public sealed class BattleUnitRenderer : IDisposable
         ArgumentNullException.ThrowIfNull(
             unit);
 
+        if (unit.Team == BattleTeam.Enemy &&
+            _batTexture is not null)
+        {
+            DrawAnimatedUnit(
+                spriteBatch,
+                unit,
+                _batTexture);
+
+            return;
+        }
+
+        if (unit.Team == BattleTeam.Player &&
+            _unitTextures.TryGetValue(
+                unit.JobName,
+                out var unitTexture))
+        {
+            DrawAnimatedUnit(
+                spriteBatch,
+                unit,
+                unitTexture);
+
+            return;
+        }
+
         var drawPosition =
             GetUnitDrawPosition(
                 unit);
-        var tint = unit.Team == BattleTeam.Player
-            ? Color.White
-            : new Color(
-                r: 255,
-                g: 105,
-                b: 105,
-                alpha: 255);
-
         spriteBatch.Draw(
             texture: _placeholderTexture,
             position: drawPosition,
-            color: tint);
+            color:
+                unit.IsDefeated
+                    ? new Color(110, 110, 120, 255)
+                    : Color.White);
     }
 
     /// <summary>
@@ -103,6 +138,101 @@ public sealed class BattleUnitRenderer : IDisposable
     public void Dispose()
     {
         _placeholderTexture.Dispose();
+    }
+
+    private void DrawAnimatedUnit(
+        SpriteBatch spriteBatch,
+        BattleUnit unit,
+        Texture2D texture)
+    {
+        var sourceRectangle =
+            GetAnimatedSourceRectangle(
+                unit);
+
+        var tileDrawPosition =
+            _mapRenderer.GridToScreen(
+                unit.RenderGridPosition.X,
+                unit.RenderGridPosition.Y);
+
+        var tileCenter =
+            new Vector2(
+                tileDrawPosition.X +
+                (_tileWidth / 2.0f),
+                tileDrawPosition.Y +
+                (_tileHeight / 2.0f));
+
+        var drawPosition =
+            new Vector2(
+                tileCenter.X -
+                (AnimatedFrameSize / 2.0f),
+                tileCenter.Y -
+                AnimatedFrameSize +
+                10);
+
+        spriteBatch.Draw(
+            texture: texture,
+            position: drawPosition,
+            sourceRectangle: sourceRectangle,
+            color: Color.White);
+    }
+
+    private static Rectangle GetAnimatedSourceRectangle(
+        BattleUnit unit)
+    {
+        var directionRow =
+            unit.Facing switch
+            {
+                UnitFacing.FrontLeft => 0,
+                UnitFacing.FrontRight => 1,
+                UnitFacing.BackLeft => 2,
+                UnitFacing.BackRight => 3,
+                _ => 1
+            };
+
+        var animationState =
+            unit.IsDefeated
+                ? BattleUnitAnimationState.Prone
+                : unit.AnimationState;
+
+        var (startColumn, frameCount, frameDuration, shouldLoop) =
+            animationState switch
+            {
+                BattleUnitAnimationState.Walk =>
+                    (WalkStartColumn, 4, 0.12f, true),
+
+                BattleUnitAnimationState.Attack =>
+                    (AttackStartColumn, 4, 0.10f, false),
+
+                BattleUnitAnimationState.Prone =>
+                    (ProneStartColumn, 2, 0.55f, true),
+
+                _ =>
+                    (IdleStartColumn, 2, 0.38f, true)
+            };
+
+        var frameIndex =
+            (int)(unit.AnimationElapsedSeconds /
+                  frameDuration);
+
+        if (shouldLoop)
+        {
+            frameIndex %= frameCount;
+        }
+        else
+        {
+            frameIndex =
+                Math.Min(
+                    frameIndex,
+                    frameCount - 1);
+        }
+
+        return new Rectangle(
+            (startColumn + frameIndex) *
+            AnimatedFrameSize,
+            directionRow *
+            AnimatedFrameSize,
+            AnimatedFrameSize,
+            AnimatedFrameSize);
     }
 
     private Vector2 GetUnitDrawPosition(

@@ -11,6 +11,8 @@ public sealed class BattleUnit
 {
     public string Name { get; init; } = string.Empty;
 
+    public string JobName { get; init; } = string.Empty;
+
     public BattleTeam Team { get; init; }
 
     public Point Position { get; set; }
@@ -44,6 +46,11 @@ public sealed class BattleUnit
     public UnitFacing Facing { get; set; } = UnitFacing.FrontRight;
 
     public UnitTurnState TurnState { get; } = new();
+
+    public BattleUnitAnimationState AnimationState { get; private set; } =
+        BattleUnitAnimationState.Idle;
+
+    public float AnimationElapsedSeconds { get; private set; }
 
     public bool IsDefeated => CurrentHealth <= 0;
 
@@ -232,6 +239,28 @@ public sealed class BattleUnit
             new Vector2(
                 Position.X,
                 Position.Y);
+    }
+
+    public void SetAnimationState(
+        BattleUnitAnimationState animationState)
+    {
+        if (AnimationState == animationState)
+        {
+            return;
+        }
+
+        AnimationState =
+            animationState;
+
+        AnimationElapsedSeconds =
+            0.0f;
+    }
+
+    public void AdvanceAnimation(
+        float elapsedSeconds)
+    {
+        AnimationElapsedSeconds +=
+            elapsedSeconds;
     }
 
     private int GetTotalBonus(
